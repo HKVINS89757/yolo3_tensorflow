@@ -208,7 +208,7 @@ def full_yolo_head(x, route1, route2, num_class, anchors, net_type):
     with tf.name_scope('body_layer1'):
         x_route, x = full_yolo_body(x, 1024, net_type)
     x = conv_block(x, [1, 1], [1, 1], 3 * (5 + num_class), 'cnn', "yolo_head1", False)
-    fe1, box1, grid1 = yolo(x, anchors[[6, 7, 8]])
+    fe1, grid1 = yolo(x, anchors[[6, 7, 8]])
 
     with tf.name_scope('head_layer2'):
         x = conv_block(x_route, [1, 1], [1, 1], x_route.shape[-1].value // 2, net_type)
@@ -216,7 +216,7 @@ def full_yolo_head(x, route1, route2, num_class, anchors, net_type):
         x = tf.concat([x, route1], 3)
         x_route, x = full_yolo_body(x, 512, net_type)
     x = conv_block(x, [1, 1], [1, 1], 3 * (5 + num_class), 'cnn', "yolo_head2", False)
-    fe2, box2, grid2 = yolo(x, anchors[[3, 4, 5]])
+    fe2, grid2 = yolo(x, anchors[[3, 4, 5]])
 
     with tf.name_scope('head_layer3'):
         x = conv_block(x_route, [1, 1], [1, 1], x_route.shape[-1].value // 2, net_type)
@@ -224,11 +224,10 @@ def full_yolo_head(x, route1, route2, num_class, anchors, net_type):
         x = tf.concat([x, route2], 3)
         x_route, x = full_yolo_body(x, 256, net_type)
     x = conv_block(x, [1, 1], [1, 1], 3 * (5 + num_class), 'cnn', "yolo_head3", False)
-    fe3, box3, grid3 = yolo(x, anchors[[0, 1, 2]])
+    fe3,grid3 = yolo(x, anchors[[0, 1, 2]])
 
     fe = tf.concat([fe1, fe2, fe3], 1)
-    boxes = tf.concat([box1, box2, box3], 1)
-    return fe, boxes, grid1, grid2, grid3
+    return fe, grid1, grid2, grid3
 
 
 def tiny_darknet_body(x, net_type):
@@ -271,7 +270,7 @@ def tiny_yolo_head(x, x_route1, num_class, anchors, net_type):
         x = conv_block(x, [3, 3], [1, 1], 512, net_type)
         x = conv_block(x, [1, 1], [1, 1], 3 * (5 + num_class), 'cnn', "yolo_head1", False)
         fe1 = x
-        fe1, box1, grid1 = yolo(fe1, anchors[[3, 4, 5]])
+        fe1, grid1 = yolo(fe1, anchors[[3, 4, 5]])
 
     with tf.name_scope('head_layer2'):
         x = conv_block(x_route2, [1, 1], [1, 1], 128, net_type)
@@ -280,11 +279,10 @@ def tiny_yolo_head(x, x_route1, num_class, anchors, net_type):
         x = conv_block(x, [3, 3], [1, 1], 256, net_type)
         x = conv_block(x, [1, 1], [1, 1], 3 * (5 + num_class), 'cnn', "yolo_head2", False)
         fe2 = x
-        fe2, box2, grid2 = yolo(fe2, anchors[[0, 1, 2]])
+        fe2, grid2 = yolo(fe2, anchors[[0, 1, 2]])
 
     fe = tf.concat([fe1, fe2], 1)
-    box = tf.concat([box1, box2], 1)
-    return fe, box, grid1, grid2
+    return fe, grid1, grid2
 
 
 def yolo(f, anchors):
@@ -307,19 +305,18 @@ def yolo(f, anchors):
     # classes_score = tf.nn.sigmoid(f[..., 5:])
     box_confidence = f[..., 4:5]
     classes_score = f[..., 5:]
-    boxes = tf.reshape(tf.concat([box_xy, box_wh, box_confidence, classes_score], -1), [batchsize, -1, 3, f.shape[4]])
-    f = tf.reshape(f, [batchsize, -1, 3, f.shape[4]])
-    return f, boxes, grid
+    feas = tf.reshape(tf.concat([box_xy, box_wh, box_confidence, classes_score], -1), [batchsize, -1, 3, f.shape[4]])
+    return feas, grid
 
 
-def model(x, num_classes, anchors, net_type, cal_loss=False):
+def model(x, num_classes, anchors, net_type, cal_loss=False, score_threshold=0.3):
     batchsize, height, width, _ = x.get_shape().as_list()
     if len(anchors) == 6:
         x, x_route = tiny_darknet_body(x, net_type)
-        raw_pred, y, *grid = tiny_yolo_head(x, x_route, num_classes, anchors, net_type)
+        y, *grid = tiny_yolo_head(x, x_route, num_classes, anchors, net_type)
     else:
         x, route1, route2 = full_darknet_body(x, net_type)
-        raw_pred, y, *grid = full_yolo_head(x, route1, route2, num_classes, anchors, net_type)
+        y, *grid = full_yolo_head(x, route1, route2, num_classes, anchors, net_type)
 
     box_xy, box_wh, box_confidence, classes_score = y[..., :2], y[..., 2:4], y[..., 4:5], y[..., 5:]
     box_xy *= tf.constant([width, height], tf.float32)
@@ -327,7 +324,7 @@ def model(x, num_classes, anchors, net_type, cal_loss=False):
     boxe = tf.concat([box_xy, box_wh, box_confidence, classes_score], -1, name='debug_pred')
 
     if cal_loss:
-        return raw_pred, boxe, grid
+        return boxe, grid
     else:
         return boxe
 
@@ -352,7 +349,7 @@ def loss(pred, gts, anchors, input_size, lambda_coord, lambda_noobj, lambda_cls,
         # pred = tf.math.log(pred / (1 - pred))
         return tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=pred)
 
-    raw, pred_boxes, grid = pred
+    pred_boxes, grid = pred
 
     masks = gts[..., 4]
     batchsize = masks.shape[0].value
@@ -426,5 +423,5 @@ def loss(pred, gts, anchors, input_size, lambda_coord, lambda_noobj, lambda_cls,
         p = tf.print("loss_xy", loss_xy, "loss_wh", loss_wh, "loss_obj_confidence", loss_obj_confidence,
                      'loss_noobj_confidence', loss_noobj_confidence, "loss_cls", loss_cls, "l2_loss", l2_loss)
         with tf.control_dependencies([p]):
-            return loss_xy + loss_wh + loss_obj_confidence + loss_noobj_confidence + loss_cls
-    return loss_xy + loss_wh + loss_obj_confidence + loss_noobj_confidence + loss_cls
+            return loss_xy + loss_wh + loss_obj_confidence + loss_noobj_confidence + loss_cls + l2_loss
+    return loss_xy + loss_wh + loss_obj_confidence + loss_noobj_confidence + loss_cls + l2_loss

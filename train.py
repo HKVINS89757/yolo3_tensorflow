@@ -139,7 +139,7 @@ class YOLO():
     def train(self):
         # pred, losses, op = self.create_model()
         pred = model(self.input, len(self.classes), self.anchors, config.net_type, True)
-        grid_shape = [g.get_shape().as_list() for g in pred[2]]
+        grid_shape = [g.get_shape().as_list() for g in pred[-1]]
 
         s = sum([g[2] * g[1] for g in grid_shape])
         self.label = tf.placeholder(tf.float32, [self.batch_size, s, 3, 5 + len(self.classes)])
@@ -215,24 +215,8 @@ class YOLO():
 
             t0 = time.time()
             if idx == 0:
-                # cal vaild_loss
-                val_loss_ = 0
-                val_step = 0
-                for val_data in self.generate_data(grid_shape, is_val=True):
-                    img, label = val_data
-                    _, losses__ = sess.run([pred, losses], {
-                        self.input: img,
-                        self.label: label
-                    })
-                    val_loss_ += losses__
-                    val_step += self.batch_size
-                    if val_step >= len(self.val_data):
-                        break
-                val_loss_ /= (val_step / self.batch_size)
-
                 # for visual
-                raw_, boxes, grid = pred_
-
+                boxes, grid = pred_
                 vis_img = []
                 for b in range(self.batch_size):
                     picked_boxes = pick_box(boxes[b], 0.3, self.hw, self.classes)
@@ -248,6 +232,21 @@ class YOLO():
                     picked_boxes = pick_box(per_label[..., :], 0.3, self.hw, self.classes)
                     per_img_ = plot_rectangle(per_img_, picked_boxes, 1, 1, self.color_table, self.classes, True)
                     vis_img.append(per_img_)
+
+                # cal vaild_loss
+                val_loss_ = 0
+                val_step = 0
+                for val_data in self.generate_data(grid_shape, is_val=True):
+                    img, label = val_data
+                    _, losses__ = sess.run([pred, losses], {
+                        self.input: img,
+                        self.label: label
+                    })
+                    val_loss_ += losses__
+                    val_step += self.batch_size
+                    if val_step >= len(self.val_data):
+                        break
+                val_loss_ /= (val_step / self.batch_size)
 
                 ss = sess.run(summary, feed_dict={
                     img_tensor: np.array(vis_img),
