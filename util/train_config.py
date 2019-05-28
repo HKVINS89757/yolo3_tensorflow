@@ -27,7 +27,7 @@ def get_config():
     conf.add_argument('-lr', '--learn_rate', type=float, help='learn_rate', default=1e-4)
 
     # load pretrain
-    conf.add_argument('-pt', '--pretrain_path', type=str, help='pretrain path', default='')
+    conf.add_argument('-pt', '--pretrain_path', type=str, help='pretrain path', default='logs/cnn_full/cnn_full_model')
 
     conf.add_argument('--anchor_path', type=str, help='anchor path',
                       default=join(root, 'model_data', 'yolo_anchors.txt'))

@@ -96,7 +96,7 @@ class YOLO():
                     gds = []
                     for g_id, g_shape in enumerate(grid_shape):
                         anchors = self.anchors[[g_id, g_id + 1, g_id + 2]]
-                        gd = np.zeros(g_shape[1:3] + [3, 9 + len(self.classes)])
+                        gd = np.zeros(g_shape[1:3] + [3, 5 + len(self.classes)])
                         h_r = self.hw[0] / gd.shape[0]
                         w_r = self.hw[1] / gd.shape[1]
                         for per_label in _label_:
@@ -108,20 +108,20 @@ class YOLO():
                             box_iou = box_anchor_iou(anchors, per_label[2:4])
                             k = np.argmax(box_iou)
 
-                            gd[j, i, k, 0] = x0 / w_r - i
-                            gd[j, i, k, 1] = y0 / h_r - j
-                            gd[j, i, k, 2] = np.log(w / anchors[k, 0] + 1e-5)
-                            gd[j, i, k, 3] = np.log(h / anchors[k, 1] + 1e-5)
+                            # gd[j, i, k, 0] = x0 / w_r - i
+                            # gd[j, i, k, 1] = y0 / h_r - j
+                            # gd[j, i, k, 2] = np.log(w / anchors[k, 0] + 1e-5)
+                            # gd[j, i, k, 3] = np.log(h / anchors[k, 1] + 1e-5)
 
-                            gd[j, i, k, 4] = x0
-                            gd[j, i, k, 5] = y0
-                            gd[j, i, k, 6] = w
-                            gd[j, i, k, 7] = h
+                            gd[j, i, k, 0] = x0
+                            gd[j, i, k, 1] = y0
+                            gd[j, i, k, 2] = w
+                            gd[j, i, k, 3] = h
 
-                            gd[j, i, k, 8] = 1
-                            gd[j, i, k, 9 + int(per_label[4])] = 1
+                            gd[j, i, k, 4] = 1
+                            gd[j, i, k, 5 + int(per_label[4])] = 1
 
-                        gds.append(gd.reshape([-1, 3, 9 + len(self.classes)]))
+                        gds.append(gd.reshape([-1, 3, 5 + len(self.classes)]))
                     labels.append(np.concatenate(gds, 0))
                     b += 1
                     if len(labels) == self.batch_size:
@@ -142,10 +142,10 @@ class YOLO():
         grid_shape = [g.get_shape().as_list() for g in pred[2]]
 
         s = sum([g[2] * g[1] for g in grid_shape])
-        self.label = tf.placeholder(tf.float32, [self.batch_size, s, 3, 9 + len(self.classes)])
+        self.label = tf.placeholder(tf.float32, [self.batch_size, s, 3, 5 + len(self.classes)])
         # for data in self.generate_data(grid_shape):
         #     print()
-        losses = loss(pred, self.label, self.hw, self.lambda_coord, self.lambda_noobj, self.lambda_cls,
+        losses = loss(pred, self.label, self.anchors, self.hw, self.lambda_coord, self.lambda_noobj, self.lambda_cls,
                       self.iou_threshold, config.debug)
         opt = tf.train.AdamOptimizer(self.learn_rate)
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -245,7 +245,7 @@ class YOLO():
                     # draw gts
                     per_img_ = per_img.copy()
                     per_label = label[b]
-                    picked_boxes = pick_box(per_label[..., 4:], 0.3, self.hw, self.classes)
+                    picked_boxes = pick_box(per_label[..., :], 0.3, self.hw, self.classes)
                     per_img_ = plot_rectangle(per_img_, picked_boxes, 1, 1, self.color_table, self.classes, True)
                     vis_img.append(per_img_)
 

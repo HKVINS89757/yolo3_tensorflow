@@ -93,7 +93,7 @@ def read_image_and_lable(gt_path, hw, anchor, hue=.1, sat=1.5, val=1.5):
     return image_data, xyxy, anchor
 
 
-def get_color_table(class_num, seed=200):
+def get_color_table(class_num, seed=2000):
     random.seed(seed)
     color_table = {}
     for i in range(class_num):

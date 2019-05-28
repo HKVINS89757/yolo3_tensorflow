@@ -42,7 +42,7 @@ def pick_box(boxes, score_threshold, hw, classes):
     :param classes: classes num
     :return:
     """
-    score = boxes[..., 4:5] * boxes[..., 5:]
+    score = np_sigmoid(boxes[..., 4:5]) * np_sigmoid(boxes[..., 5:])
     idx = np.where(score > score_threshold)
     box_select = boxes[idx[:2]]
     box_xywh = box_select[:, :4]
